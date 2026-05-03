@@ -1,0 +1,81 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '**.md'
+      - 'docs/**'
+      - '.github/workflows/**' # 监控流水线自身的变动
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '**.md'
+  workflow_dispatch: # 允许你手动点击运行
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  # ==========================================
+  # 阶段一：CI - 质量把关
+  # ==========================================
+  quality-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20' # 升级到最新 LTS 避免之前的弃用警告
+
+      - name: Install Tools
+        run: npm install -g markdownlint-cli
+
+      - name: Run Linter
+        run: markdownlint '**/*.md' --ignore node_modules
+
+      - name: Check for broken links
+        uses: gaurav-nelson/github-action-markdown-link-check@v1
+        with:
+          use-quiet-mode: 'yes'
+          config-file: '.github/mlc_config.json'
+
+  # ==========================================
+  # 阶段二：CD - 自动化发布 (仅在 CI 通过后运行)
+  # ==========================================
+  deploy:
+    runs-on: ubuntu-latest
+    needs: quality-check  # 核心：必须等待 quality-check 成功
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' # 仅在 main 推送时部署
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build documentation
+        run: |
+          mkdir -p _site
+          cp -r *.md _site/ 2>/dev/null || true
+          cp -r docs/ _site/ 2>/dev/null || true
+          echo "Build completed"
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '_site'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
