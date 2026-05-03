@@ -1,1 +1,1 @@
-# this is a self-contributed note-ware for laerning cs knowledge
+# this is a self-contributed note-ware for learning technology
